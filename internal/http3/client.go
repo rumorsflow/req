@@ -84,8 +84,8 @@ func newClientConn(
 	conn *quic.Conn,
 	enableDatagrams bool,
 	additionalSettings map[uint64]uint64,
-	streamHijacker func(FrameType, quic.ConnectionTracingID, *quic.Stream, error) (hijacked bool, err error),
-	uniStreamHijacker func(StreamType, quic.ConnectionTracingID, *quic.ReceiveStream, error) (hijacked bool),
+	streamHijacker func(FrameType, *quic.Stream, error) (hijacked bool, err error),
+	uniStreamHijacker func(StreamType, *quic.ReceiveStream, error) (hijacked bool),
 	maxResponseHeaderBytes int,
 	disableCompression bool,
 	logger *slog.Logger,
@@ -166,7 +166,7 @@ func (c *ClientConn) setupConn() error {
 	return err
 }
 
-func (c *ClientConn) handleBidirectionalStreams(streamHijacker func(FrameType, quic.ConnectionTracingID, *quic.Stream, error) (hijacked bool, err error)) {
+func (c *ClientConn) handleBidirectionalStreams(streamHijacker func(FrameType, *quic.Stream, error) (hijacked bool, err error)) {
 	for {
 		str, err := c.conn.conn.AcceptStream(context.Background())
 		if err != nil {
@@ -179,8 +179,7 @@ func (c *ClientConn) handleBidirectionalStreams(streamHijacker func(FrameType, q
 			r:         str,
 			closeConn: c.conn.CloseWithError,
 			unknownFrameHandler: func(ft FrameType, e error) (processed bool, err error) {
-				id := c.conn.Context().Value(quic.ConnectionTracingKey).(quic.ConnectionTracingID)
-				return streamHijacker(ft, id, str, e)
+				return streamHijacker(ft, str, e)
 			},
 		}
 		go func() {
@@ -382,7 +381,7 @@ func (c *ClientConn) doRequest(req *http.Request, str *RequestStream) (*http.Res
 				if req.ContentLength > 0 {
 					contentLength = req.ContentLength
 				}
-			  dumps := dump.GetDumpers(req.Context(), c.Dump)
+				dumps := dump.GetDumpers(req.Context(), c.Dump)
 				err := c.sendRequestBody(str, req.Body, contentLength, dumps)
 				traceWroteRequest(trace, err)
 				if err != nil {
